@@ -80,6 +80,8 @@ PLANETAS = {
     "Terra": 9.81,
     "Júpiter": 24.79,
 }
+OPCOES_GRAVIDADE = list(PLANETAS.keys()) + ["Personalizado"]
+INDICE_PERSONALIZADO = len(OPCOES_GRAVIDADE) - 1
 
 # ---------------------------------------------------------------------------
 # 3. INTERFACE GRÁFICA (widgets e eventos - separado da física acima)
@@ -94,6 +96,7 @@ ax.set_xlabel("Distância horizontal x (m)")
 ax.set_ylabel("Altura y (m)")
 ax.set_title("Trajetória do Projétil (sem resistência do ar)")
 ax.grid(True, alpha=0.3)
+ax.set_aspect("equal", adjustable="box")
 
 texto_resultados = ax.text(
     0.03, 0.97, "", transform=ax.transAxes, fontsize=10, va="top", ha="left",
@@ -117,8 +120,8 @@ slider_y0 = Slider(eixo_y0, "y0 (m)", 0, 50, valinit=0)
 slider_g = Slider(eixo_g, "g (m/s²)", 1.6, 24.8, valinit=9.81)
 
 # --- Seletor de planeta pré-configurado ---
-eixo_planetas = plt.axes([0.80, 0.15, 0.15, 0.20])
-radio_planetas = RadioButtons(eixo_planetas, list(PLANETAS.keys()), active=2)
+eixo_planetas = plt.axes([0.80, 0.12, 0.17, 0.24])
+radio_planetas = RadioButtons(eixo_planetas, OPCOES_GRAVIDADE, active=2)
 
 # --- Checkbox: sobrepor lançamentos anteriores (requisito opcional) ---
 eixo_check = plt.axes([0.10, 0.03, 0.28, 0.05])
@@ -135,11 +138,42 @@ botao_limpar = Button(eixo_limpar, "Limpar")
 # destruídas pelo garbage collector / possam ser removidas depois.
 _animacao_atual = [None]
 _curvas_anteriores = []
+_atualizando_planeta = [False]
 
 
 def ler_parametros():
     """Lê os valores atuais dos sliders."""
     return slider_v0.val, slider_theta.val, slider_y0.val, slider_g.val
+
+
+def ajustar_limites(x, y):
+    x_max_dados = max(float(np.max(x)), 1.0)
+    y_max_dados = max(float(np.max(y)), 1.0)
+
+    for curva in _curvas_anteriores:
+        x_anterior = np.asarray(curva.get_xdata())
+        y_anterior = np.asarray(curva.get_ydata())
+        if x_anterior.size:
+            x_max_dados = max(x_max_dados, float(np.max(x_anterior)))
+        if y_anterior.size:
+            y_max_dados = max(y_max_dados, float(np.max(y_anterior)))
+
+    margem = 0.1
+    x_max = x_max_dados * (1 + margem)
+    y_max = y_max_dados * (1 + margem)
+
+    posicao = ax.get_position()
+    largura = fig.get_figwidth() * posicao.width
+    altura = fig.get_figheight() * posicao.height
+    proporcao_area = largura / altura
+
+    if x_max / y_max > proporcao_area:
+        y_max = x_max / proporcao_area
+    else:
+        x_max = y_max * proporcao_area
+
+    ax.set_xlim(0, x_max)
+    ax.set_ylim(0, y_max)
 
 
 def atualizar_grafico(_=None):
@@ -171,12 +205,7 @@ def atualizar_grafico(_=None):
         f"Tempo de voo = {t_voo:8.2f} s"
     )
 
-    # ajusta limites dos eixos mantendo escala consistente (evita distorção)
-    margem = 0.1
-    x_max = max(alcance, 1.0) * (1 + margem)
-    y_max_plot = max(y_max, 1.0) * (1 + margem)
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(0, y_max_plot)
+    ajustar_limites(x, y)
 
     fig.canvas.draw_idle()
 
@@ -184,7 +213,20 @@ def atualizar_grafico(_=None):
 def ao_mudar_planeta(label):
     """Callback do RadioButtons: ao escolher um planeta, atualiza o slider
     de gravidade, o que por sua vez dispara atualizar_grafico() automaticamente."""
-    slider_g.set_val(PLANETAS[label])
+    if label == "Personalizado":
+        return
+
+    _atualizando_planeta[0] = True
+    try:
+        slider_g.set_val(PLANETAS[label])
+    finally:
+        _atualizando_planeta[0] = False
+
+
+def ao_mudar_gravidade(_valor):
+    if not _atualizando_planeta[0] and radio_planetas.value_selected != "Personalizado":
+        radio_planetas.set_active(INDICE_PERSONALIZADO)
+    atualizar_grafico()
 
 
 def animar_lancamento(_evento):
@@ -246,14 +288,14 @@ def limpar_sobreposicoes(_evento):
     for curva in _curvas_anteriores:
         curva.remove()
     _curvas_anteriores.clear()
-    fig.canvas.draw_idle()
+    atualizar_grafico()
 
 
 # --- Liga cada widget à função chamada quando ele é alterado ---
 slider_v0.on_changed(atualizar_grafico)
 slider_theta.on_changed(atualizar_grafico)
 slider_y0.on_changed(atualizar_grafico)
-slider_g.on_changed(atualizar_grafico)
+slider_g.on_changed(ao_mudar_gravidade)
 radio_planetas.on_clicked(ao_mudar_planeta)
 botao_lancar.on_clicked(animar_lancamento)
 botao_limpar.on_clicked(limpar_sobreposicoes)
