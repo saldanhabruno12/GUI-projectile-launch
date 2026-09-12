@@ -8,7 +8,12 @@ Atividade  : Lançamento de Projéteis (sem resistência do ar)
 INSTRUÇÕES DE EXECUÇÃO
 -----------------------
 Bibliotecas necessárias:
-    pip install numpy matplotlib
+    pip install numpy
+    pip install matplotlib
+
+Em caso de erro ao instalar, tente:
+    py -m pip install numpy
+    py -m pip install matplotlib
 
 Para executar:
     python projectile.py
