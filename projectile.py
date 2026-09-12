@@ -11,7 +11,7 @@ Bibliotecas necessárias:
     pip install numpy matplotlib
 
 Para executar:
-    python projetil_gui.py
+    python projectile.py
 
 Biblioteca de interface utilizada: matplotlib.widgets
 (Slider, Button, RadioButtons, CheckButtons)
