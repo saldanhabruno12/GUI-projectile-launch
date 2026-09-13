@@ -23,7 +23,8 @@ Biblioteca de interface utilizada: matplotlib.widgets
 Escolhida por não exigir dependências externas além do matplotlib,
 que já é usado para plotar o gráfico da trajetória.
 """
-
+import itertools
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons, CheckButtons, TextBox
@@ -457,6 +458,9 @@ def atualizar_resultados(alcance, y_max, t_voo):
 
 def atualizar_grafico(_=None):
     """Atualiza a trajetória e os resultados em tempo real."""
+
+    parar_animacao_atual()
+
     sincronizar_campos_com_sliders()
 
     v0, theta, y0, g = ler_parametros()
@@ -530,6 +534,11 @@ def ao_mudar_gravidade(_valor):
 
     atualizar_grafico()
 
+def parar_animacao_atual():
+    animacao = _animacao_atual[0]
+    if animacao is not None and animacao.event_source is not None:
+        animacao.event_source.stop()
+    _animacao_atual[0] = None
 
 def animar_lancamento(_evento):
     """Anima o projétil ao longo da trajetória."""
@@ -540,9 +549,12 @@ def animar_lancamento(_evento):
         texto_erro.set_text("⚠ " + msg)
         return
 
-    t, x, y = calcular_trajetoria(v0, theta, y0, g, n_pontos=150)
+    n_pontos = 300
+    t, x, y = calcular_trajetoria(v0, theta, y0, g, n_pontos=n_pontos)
     t_voo_final, y_max_final, alcance_final = calcular_resultados(v0, theta, y0, g)
 
+    escala_tempo = 1.0
+    
     if check_sobrepor.get_status()[0]:
         cor = CORES_TRAJETORIAS_ANTERIORES[
             _indice_cor_trajetoria[0] % len(CORES_TRAJETORIAS_ANTERIORES)
@@ -565,13 +577,35 @@ def animar_lancamento(_evento):
     altura_maxima_ate_agora = np.maximum.accumulate(y)
 
     def quadro_da_animacao(i):
-        ponto_animado.set_data([x[i]], [y[i]])
+        tempo_decorrido_real = time.perf_counter() - tempo_inicio
+        t_simulado = tempo_decorrido_real * escala_tempo
 
-        atualizar_resultados(
-            x[i],
-            altura_maxima_ate_agora[i],
-            t[i]
-        )
+        chegou_ao_fim = t_simulado >= t_voo_final
+        if chegou_ao_fim:
+            t_simulado = t_voo_final
+
+        if t_simulado >= t_voo_final:
+            t_simulado = t_voo_final
+            if _animacao_atual[0] is not None and _animacao_atual[0].event_source is not None:
+                _animacao_atual[0].event_source.stop()
+
+        # interpola x, y no instante t_simulado, em vez de indexar por frame
+        x_atual = np.interp(t_simulado, t, x)
+        y_atual = np.interp(t_simulado, t, y)
+        altura_max_atual = np.interp(t_simulado, t, altura_maxima_ate_agora)
+
+        ponto_animado.set_data([x_atual], [y_atual])
+
+        if chegou_ao_fim:
+            atualizar_resultados(
+                alcance_final,
+                y_max_final,
+                t_voo_final
+            )
+            if _animacao_atual[0] is not None and _animacao_atual[0].event_source is not None:
+                _animacao_atual[0].event_source.stop()
+        else:
+            atualizar_resultados(x_atual, altura_max_atual, t_simulado)
 
         if i == len(x) - 1:
             atualizar_resultados(
@@ -582,18 +616,17 @@ def animar_lancamento(_evento):
 
         return ponto_animado, texto_resultados
 
-    animacao_anterior = _animacao_atual[0]
-
-    if animacao_anterior is not None and animacao_anterior.event_source is not None:
-        animacao_anterior.event_source.stop()
+    parar_animacao_atual()
+    tempo_inicio = time.perf_counter()
 
     _animacao_atual[0] = FuncAnimation(
         fig,
         quadro_da_animacao,
-        frames=len(x),
+        frames=itertools.count(),
         interval=15,
-        blit=True,
-        repeat=False
+        blit=False,
+        repeat=False,
+        cache_frame_data=False
     )
 
     fig.canvas.draw_idle()
@@ -601,6 +634,9 @@ def animar_lancamento(_evento):
 
 def limpar_sobreposicoes(_evento):
     """Remove as trajetórias sobrepostas."""
+
+    parar_animacao_atual()
+
     for curva in _curvas_anteriores:
         curva.remove()
 
