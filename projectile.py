@@ -19,28 +19,25 @@ Para executar:
     python projectile.py
 
 Biblioteca de interface utilizada: matplotlib.widgets
-(Slider, Button, RadioButtons, CheckButtons)
+(Slider, Button, RadioButtons, CheckButtons, TextBox)
 Escolhida por não exigir dependências externas além do matplotlib,
 que já é usado para plotar o gráfico da trajetória.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, RadioButtons, CheckButtons
+from matplotlib.widgets import Slider, Button, RadioButtons, CheckButtons, TextBox
 from matplotlib.animation import FuncAnimation
 
 # ---------------------------------------------------------------------------
 # 1. FÍSICA: funções que calculam a trajetória e os resultados do lançamento
-#    (totalmente separadas dos widgets/interface, conforme pedido no enunciado)
 # ---------------------------------------------------------------------------
 
 def calcular_resultados(v0, theta_graus, y0, g):
-    """Calcula tempo de voo, altura máxima e alcance (fórmulas analíticas,
-    Seção 2 do enunciado). Assume-se lançamento até y = 0."""
+    """Calcula tempo de voo, altura máxima e alcance."""
     theta = np.radians(theta_graus)
     vy0 = v0 * np.sin(theta)
 
-    # tempo de voo: raiz positiva de  y0 + vy0*t - 0.5*g*t^2 = 0
     discriminante = vy0**2 + 2 * g * y0
     t_voo = (vy0 + np.sqrt(discriminante)) / g
 
@@ -51,20 +48,20 @@ def calcular_resultados(v0, theta_graus, y0, g):
 
 
 def calcular_trajetoria(v0, theta_graus, y0, g, n_pontos=300):
-    """Retorna os vetores t, x(t) e y(t) da trajetória, do lançamento até o solo."""
+    """Retorna os vetores t, x(t) e y(t) da trajetória."""
     theta = np.radians(theta_graus)
     t_voo, _, _ = calcular_resultados(v0, theta_graus, y0, g)
 
     t = np.linspace(0, t_voo, n_pontos)
     x = v0 * np.cos(theta) * t
     y = y0 + v0 * np.sin(theta) * t - 0.5 * g * t**2
-    y = np.clip(y, 0, None)  # evita valores negativos por erro de arredondamento
+    y = np.clip(y, 0, None)
+
     return t, x, y
 
 
 def validar_entradas(v0, theta_graus, y0, g):
-    """Verifica se os parâmetros atuais formam um lançamento fisicamente válido.
-    Retorna (valido: bool, mensagem_de_erro: str)."""
+    """Valida os parâmetros físicos do lançamento."""
     if v0 <= 0:
         return False, "Velocidade inicial deve ser maior que 0."
     if not (0 < theta_graus < 90):
@@ -77,78 +74,345 @@ def validar_entradas(v0, theta_graus, y0, g):
 
 
 # ---------------------------------------------------------------------------
-# 2. PLANETAS PRÉ-CONFIGURADOS (valores de g em m/s²)
+# 2. PLANETAS PRÉ-CONFIGURADOS
 # ---------------------------------------------------------------------------
+
 PLANETAS = {
     "Lua": 1.62,
     "Marte": 3.71,
     "Terra": 9.81,
     "Júpiter": 24.79,
 }
+
 OPCOES_GRAVIDADE = list(PLANETAS.keys()) + ["Personalizado"]
 INDICE_PERSONALIZADO = len(OPCOES_GRAVIDADE) - 1
 
+
 # ---------------------------------------------------------------------------
-# 3. INTERFACE GRÁFICA (widgets e eventos - separado da física acima)
+# 3. INTERFACE GRÁFICA
 # ---------------------------------------------------------------------------
 
-fig, ax = plt.subplots(figsize=(9, 7))
-plt.subplots_adjust(left=0.10, bottom=0.42, right=0.78)
+COR_FUNDO = "#F4F7FB"
+COR_PAINEL = "#FFFFFF"
+COR_GRAFICO = "#FFFFFF"
+COR_PRIMARIA = "#2563EB"
+COR_PRIMARIA_HOVER = "#1D4ED8"
+COR_TEXTO = "#172033"
+COR_TEXTO_SECUNDARIO = "#526078"
+COR_BORDA = "#CBD5E1"
+COR_GRID = "#DCE3EC"
+COR_TRAJETORIA = "#2563EB"
+COR_PROJETIL = "#EF4444"
+COR_ERRO = "#B91C1C"
+COR_BOTAO_SECUNDARIO = "#E8EDF4"
+COR_BOTAO_SECUNDARIO_HOVER = "#D8E0EA"
 
-linha_trajetoria, = ax.plot([], [], lw=2, color="tab:blue", label="Trajetória")
-ponto_animado, = ax.plot([], [], 'o', color="tab:red", markersize=8)
-ax.set_xlabel("Distância horizontal x (m)")
-ax.set_ylabel("Altura y (m)")
-ax.set_title("Trajetória do Projétil (sem resistência do ar)")
-ax.grid(True, alpha=0.3)
+CORES_TRAJETORIAS_ANTERIORES = [
+    "#F59E0B",
+    "#10B981",
+    "#8B5CF6",
+    "#EC4899",
+    "#06B6D4",
+    "#F97316",
+]
+
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "font.size": 10,
+    "axes.titlesize": 13,
+    "axes.labelsize": 10,
+})
+
+fig = plt.figure(figsize=(11.5, 7.6), facecolor=COR_FUNDO)
+
+fig.text(
+    0.075, 0.952,
+    "Simulador de Lançamento de Projéteis",
+    fontsize=18,
+    fontweight="bold",
+    color=COR_TEXTO,
+    va="top"
+)
+
+fig.text(
+    0.075, 0.915,
+    "Explore como velocidade, ângulo, altura inicial e gravidade alteram a trajetória.",
+    fontsize=10,
+    color=COR_TEXTO_SECUNDARIO,
+    va="top"
+)
+
+ax = fig.add_axes([0.075, 0.395, 0.675, 0.445], facecolor=COR_GRAFICO)
+
+linha_trajetoria, = ax.plot(
+    [], [],
+    lw=2.8,
+    color=COR_TRAJETORIA,
+    solid_capstyle="round"
+)
+
+ponto_animado, = ax.plot(
+    [], [],
+    "o",
+    color=COR_PROJETIL,
+    markersize=9,
+    markeredgecolor="white",
+    markeredgewidth=1.3,
+    zorder=5
+)
+
+ax.set_xlabel("Distância horizontal x (m)", color=COR_TEXTO_SECUNDARIO, labelpad=10)
+ax.set_ylabel("Altura y (m)", color=COR_TEXTO_SECUNDARIO, labelpad=10)
+ax.set_title(
+    "Trajetória do projétil",
+    loc="left",
+    color=COR_TEXTO,
+    fontweight="bold",
+    pad=10
+)
+
+ax.grid(True, color=COR_GRID, linewidth=0.8, linestyle="--", alpha=0.95)
+ax.set_axisbelow(True)
 ax.set_aspect("equal", adjustable="box")
 
+for spine in ax.spines.values():
+    spine.set_color(COR_BORDA)
+    spine.set_linewidth(1.0)
+
+ax.tick_params(colors=COR_TEXTO_SECUNDARIO)
+
 texto_resultados = ax.text(
-    0.03, 0.97, "", transform=ax.transAxes, fontsize=10, va="top", ha="left",
+    0.025,
+    0.965,
+    "",
+    transform=ax.transAxes,
+    fontsize=10,
+    va="top",
+    ha="left",
+    color=COR_TEXTO,
     family="monospace",
-    bbox=dict(boxstyle="round", facecolor="white", alpha=0.75, edgecolor="0.7"),
+    linespacing=1.45,
+    bbox=dict(
+        boxstyle="round,pad=0.6",
+        facecolor="white",
+        alpha=0.96,
+        edgecolor=COR_BORDA,
+        linewidth=1.0
+    ),
 )
-texto_erro = ax.text(
-    1.05, 0.60, "", transform=ax.transAxes, fontsize=9, color="crimson",
-    va="top", wrap=True, clip_on=False,
+
+texto_erro = fig.text(
+    0.79,
+    0.455,
+    "",
+    fontsize=9.5,
+    color=COR_ERRO,
+    va="top",
+    ha="left",
+    wrap=True
 )
 
-# --- Sliders (requisito: controles interativos para v0, theta, y0, g) ---
-eixo_v0 = plt.axes([0.10, 0.30, 0.60, 0.03])
-eixo_theta = plt.axes([0.10, 0.25, 0.60, 0.03])
-eixo_y0 = plt.axes([0.10, 0.20, 0.60, 0.03])
-eixo_g = plt.axes([0.10, 0.15, 0.60, 0.03])
+fig.text(
+    0.79,
+    0.842,
+    "AMBIENTE",
+    fontsize=9,
+    fontweight="bold",
+    color=COR_TEXTO_SECUNDARIO
+)
 
-slider_v0 = Slider(eixo_v0, "v0 (m/s)", 5, 150, valinit=40)
-slider_theta = Slider(eixo_theta, "θ (graus)", 1, 89, valinit=45)
-slider_y0 = Slider(eixo_y0, "y0 (m)", 0, 50, valinit=0)
-slider_g = Slider(eixo_g, "g (m/s²)", 1.6, 24.8, valinit=9.81)
+eixo_planetas = fig.add_axes([0.79, 0.565, 0.17, 0.245], facecolor=COR_PAINEL)
 
-# --- Seletor de planeta pré-configurado ---
-eixo_planetas = plt.axes([0.80, 0.12, 0.17, 0.24])
-radio_planetas = RadioButtons(eixo_planetas, OPCOES_GRAVIDADE, active=2)
+for spine in eixo_planetas.spines.values():
+    spine.set_color(COR_BORDA)
 
-# --- Checkbox: sobrepor lançamentos anteriores (requisito opcional) ---
-eixo_check = plt.axes([0.10, 0.03, 0.28, 0.05])
-check_sobrepor = CheckButtons(eixo_check, ["Manter trajetórias anteriores"], [False])
+radio_planetas = RadioButtons(
+    eixo_planetas,
+    OPCOES_GRAVIDADE,
+    active=2,
+    activecolor=COR_PRIMARIA
+)
 
-# --- Botões ---
-eixo_lancar = plt.axes([0.42, 0.03, 0.14, 0.05])
-botao_lancar = Button(eixo_lancar, "Lançar")
+for texto in radio_planetas.labels:
+    texto.set_color(COR_TEXTO)
+    texto.set_fontsize(10)
 
-eixo_limpar = plt.axes([0.60, 0.03, 0.14, 0.05])
-botao_limpar = Button(eixo_limpar, "Limpar")
+fig.text(
+    0.075,
+    0.345,
+    "PARÂMETROS DO LANÇAMENTO",
+    fontsize=9,
+    fontweight="bold",
+    color=COR_TEXTO_SECUNDARIO
+)
 
-# Guarda a animação e as curvas sobrepostas para que não sejam
-# destruídas pelo garbage collector / possam ser removidas depois.
+# --- Sliders ---
+eixo_v0 = fig.add_axes([0.14, 0.288, 0.43, 0.028], facecolor=COR_FUNDO)
+eixo_theta = fig.add_axes([0.14, 0.238, 0.43, 0.028], facecolor=COR_FUNDO)
+eixo_y0 = fig.add_axes([0.14, 0.188, 0.43, 0.028], facecolor=COR_FUNDO)
+eixo_g = fig.add_axes([0.14, 0.138, 0.43, 0.028], facecolor=COR_FUNDO)
+
+slider_v0 = Slider(
+    eixo_v0, "v0 (m/s)", 5, 150,
+    valinit=40, valfmt="%1.1f", color=COR_PRIMARIA
+)
+
+slider_theta = Slider(
+    eixo_theta, "θ (graus)", 1, 89,
+    valinit=45, valfmt="%1.1f°", color=COR_PRIMARIA
+)
+
+slider_y0 = Slider(
+    eixo_y0, "y0 (m)", 0, 50,
+    valinit=0, valfmt="%1.1f", color=COR_PRIMARIA
+)
+
+slider_g = Slider(
+    eixo_g, "g (m/s²)", 1.6, 24.8,
+    valinit=9.81, valfmt="%1.2f", color=COR_PRIMARIA
+)
+
+for slider in (slider_v0, slider_theta, slider_y0, slider_g):
+    slider.label.set_color(COR_TEXTO)
+    slider.label.set_fontweight("bold")
+    slider.valtext.set_visible(False)
+
+# --- Campos numéricos editáveis ---
+eixo_input_v0 = fig.add_axes([0.595, 0.281, 0.105, 0.041])
+eixo_input_theta = fig.add_axes([0.595, 0.231, 0.105, 0.041])
+eixo_input_y0 = fig.add_axes([0.595, 0.181, 0.105, 0.041])
+eixo_input_g = fig.add_axes([0.595, 0.131, 0.105, 0.041])
+
+input_v0 = TextBox(
+    eixo_input_v0, "",
+    initial="40.0",
+    color=COR_PAINEL,
+    hovercolor="#F8FAFC",
+    textalignment="center"
+)
+
+input_theta = TextBox(
+    eixo_input_theta, "",
+    initial="45.0",
+    color=COR_PAINEL,
+    hovercolor="#F8FAFC",
+    textalignment="center"
+)
+
+input_y0 = TextBox(
+    eixo_input_y0, "",
+    initial="0.0",
+    color=COR_PAINEL,
+    hovercolor="#F8FAFC",
+    textalignment="center"
+)
+
+input_g = TextBox(
+    eixo_input_g, "",
+    initial="9.81",
+    color=COR_PAINEL,
+    hovercolor="#F8FAFC",
+    textalignment="center"
+)
+
+for eixo_input in (eixo_input_v0, eixo_input_theta, eixo_input_y0, eixo_input_g):
+    for spine in eixo_input.spines.values():
+        spine.set_color(COR_BORDA)
+        spine.set_linewidth(1.0)
+
+for campo in (input_v0, input_theta, input_y0, input_g):
+    campo.text_disp.set_color(COR_TEXTO)
+    campo.text_disp.set_fontweight("bold")
+
+# --- Checkbox maior ---
+eixo_check = fig.add_axes([0.075, 0.042, 0.32, 0.072], facecolor=COR_FUNDO)
+
+for spine in eixo_check.spines.values():
+    spine.set_visible(False)
+
+check_sobrepor = CheckButtons(
+    eixo_check,
+    ["Manter trajetórias anteriores"],
+    [False],
+    label_props={
+        "fontsize": [10.5],
+        "color": [COR_TEXTO],
+        "fontweight": ["medium"],
+    },
+    frame_props={
+        "s": 115,
+        "edgecolor": COR_TEXTO_SECUNDARIO,
+        "linewidth": 1.4,
+    },
+    check_props={
+        "s": 115,
+        "color": COR_PRIMARIA,
+        "linewidth": 2.0,
+    }
+)
+
+eixo_lancar = fig.add_axes([0.405, 0.052, 0.14, 0.055])
+
+botao_lancar = Button(
+    eixo_lancar,
+    "Lançar",
+    color=COR_PRIMARIA,
+    hovercolor=COR_PRIMARIA_HOVER
+)
+
+botao_lancar.label.set_color("white")
+botao_lancar.label.set_fontweight("bold")
+
+for spine in eixo_lancar.spines.values():
+    spine.set_color(COR_PRIMARIA)
+
+eixo_limpar = fig.add_axes([0.565, 0.052, 0.14, 0.055])
+
+botao_limpar = Button(
+    eixo_limpar,
+    "Limpar",
+    color=COR_BOTAO_SECUNDARIO,
+    hovercolor=COR_BOTAO_SECUNDARIO_HOVER
+)
+
+botao_limpar.label.set_color(COR_TEXTO)
+botao_limpar.label.set_fontweight("bold")
+
+for spine in eixo_limpar.spines.values():
+    spine.set_color(COR_BORDA)
+
 _animacao_atual = [None]
 _curvas_anteriores = []
 _atualizando_planeta = [False]
+_sincronizando_campos = [False]
+_indice_cor_trajetoria = [0]
 
 
 def ler_parametros():
     """Lê os valores atuais dos sliders."""
     return slider_v0.val, slider_theta.val, slider_y0.val, slider_g.val
+
+
+def definir_texto_sem_evento(campo, texto):
+    evento_anterior = campo.eventson
+    campo.eventson = False
+    campo.set_val(texto)
+    campo.eventson = evento_anterior
+
+
+def sincronizar_campos_com_sliders():
+    if _sincronizando_campos[0]:
+        return
+
+    _sincronizando_campos[0] = True
+
+    try:
+        definir_texto_sem_evento(input_v0, f"{slider_v0.val:.1f}")
+        definir_texto_sem_evento(input_theta, f"{slider_theta.val:.1f}")
+        definir_texto_sem_evento(input_y0, f"{slider_y0.val:.1f}")
+        definir_texto_sem_evento(input_g, f"{slider_g.val:.2f}")
+    finally:
+        _sincronizando_campos[0] = False
 
 
 def ajustar_limites(x, y):
@@ -158,8 +422,10 @@ def ajustar_limites(x, y):
     for curva in _curvas_anteriores:
         x_anterior = np.asarray(curva.get_xdata())
         y_anterior = np.asarray(curva.get_ydata())
+
         if x_anterior.size:
             x_max_dados = max(x_max_dados, float(np.max(x_anterior)))
+
         if y_anterior.size:
             y_max_dados = max(y_max_dados, float(np.max(y_anterior)))
 
@@ -181,15 +447,22 @@ def ajustar_limites(x, y):
     ax.set_ylim(0, y_max)
 
 
+def atualizar_resultados(alcance, y_max, t_voo):
+    texto_resultados.set_text(
+        f"Alcance R    = {alcance:8.2f} m\n"
+        f"Altura máx.  = {y_max:8.2f} m\n"
+        f"Tempo de voo = {t_voo:8.2f} s"
+    )
+
+
 def atualizar_grafico(_=None):
-    """Chamada automaticamente sempre que QUALQUER slider (v0, theta, y0, g)
-    é movido (via on_changed). Recalcula a trajetória e redesenha o gráfico
-    e os resultados numéricos em tempo real, sem reiniciar o programa."""
+    """Atualiza a trajetória e os resultados em tempo real."""
+    sincronizar_campos_com_sliders()
+
     v0, theta, y0, g = ler_parametros()
     valido, msg = validar_entradas(v0, theta, y0, g)
 
     if not valido:
-        # entrada inválida: mostra mensagem amigável, não trava nem lança erro
         texto_erro.set_text("⚠ " + msg)
         texto_resultados.set_text("")
         linha_trajetoria.set_data([], [])
@@ -198,30 +471,53 @@ def atualizar_grafico(_=None):
         return
 
     texto_erro.set_text("")
+
     t_voo, y_max, alcance = calcular_resultados(v0, theta, y0, g)
     _, x, y = calcular_trajetoria(v0, theta, y0, g)
 
     linha_trajetoria.set_data(x, y)
     ponto_animado.set_data([], [])
 
-    texto_resultados.set_text(
-        f"Alcance R    = {alcance:8.2f} m\n"
-        f"Altura máx.  = {y_max:8.2f} m\n"
-        f"Tempo de voo = {t_voo:8.2f} s"
-    )
-
+    atualizar_resultados(alcance, y_max, t_voo)
     ajustar_limites(x, y)
 
     fig.canvas.draw_idle()
 
 
+def aplicar_valor_digitado(texto, slider, campo, nome, casas_decimais=1):
+    if _sincronizando_campos[0]:
+        return
+
+    try:
+        valor = float(texto.replace(",", "."))
+    except ValueError:
+        texto_erro.set_text(f"⚠ {nome}: informe um número válido.")
+        formato = f"{{:.{casas_decimais}f}}"
+        definir_texto_sem_evento(campo, formato.format(slider.val))
+        fig.canvas.draw_idle()
+        return
+
+    if not slider.valmin <= valor <= slider.valmax:
+        texto_erro.set_text(
+            f"⚠ {nome}: informe um valor entre "
+            f"{slider.valmin:g} e {slider.valmax:g}."
+        )
+        formato = f"{{:.{casas_decimais}f}}"
+        definir_texto_sem_evento(campo, formato.format(slider.val))
+        fig.canvas.draw_idle()
+        return
+
+    texto_erro.set_text("")
+    slider.set_val(valor)
+
+
 def ao_mudar_planeta(label):
-    """Callback do RadioButtons: ao escolher um planeta, atualiza o slider
-    de gravidade, o que por sua vez dispara atualizar_grafico() automaticamente."""
+    """Atualiza a gravidade ao selecionar um planeta."""
     if label == "Personalizado":
         return
 
     _atualizando_planeta[0] = True
+
     try:
         slider_g.set_val(PLANETAS[label])
     finally:
@@ -231,14 +527,15 @@ def ao_mudar_planeta(label):
 def ao_mudar_gravidade(_valor):
     if not _atualizando_planeta[0] and radio_planetas.value_selected != "Personalizado":
         radio_planetas.set_active(INDICE_PERSONALIZADO)
+
     atualizar_grafico()
 
 
 def animar_lancamento(_evento):
-    """Callback do botão 'Lançar': anima um ponto vermelho se deslocando
-    sobre a curva y(x) já calculada, conforme o tempo avança."""
+    """Anima o projétil ao longo da trajetória."""
     v0, theta, y0, g = ler_parametros()
     valido, msg = validar_entradas(v0, theta, y0, g)
+
     if not valido:
         texto_erro.set_text("⚠ " + msg)
         return
@@ -246,64 +543,104 @@ def animar_lancamento(_evento):
     t, x, y = calcular_trajetoria(v0, theta, y0, g, n_pontos=150)
     t_voo_final, y_max_final, alcance_final = calcular_resultados(v0, theta, y0, g)
 
-    # se "manter trajetórias anteriores" estiver marcado, fixa a curva atual
-    # no gráfico antes de iniciar a nova animação (requisito opcional)
     if check_sobrepor.get_status()[0]:
-        curva_fixa, = ax.plot(x, y, lw=1.5, alpha=0.5)
-        _curvas_anteriores.append(curva_fixa)
+        cor = CORES_TRAJETORIAS_ANTERIORES[
+            _indice_cor_trajetoria[0] % len(CORES_TRAJETORIAS_ANTERIORES)
+        ]
+        _indice_cor_trajetoria[0] += 1
 
-    # altura máxima já atingida "até agora" em cada instante da animação
+        curva_fixa, = ax.plot(
+            x,
+            y,
+            lw=2.0,
+            alpha=0.78,
+            color=cor,
+            linestyle="--",
+            dashes=(5, 3)
+        )
+
+        _curvas_anteriores.append(curva_fixa)
+        ajustar_limites(x, y)
+
     altura_maxima_ate_agora = np.maximum.accumulate(y)
 
     def quadro_da_animacao(i):
         ponto_animado.set_data([x[i]], [y[i]])
-        # atualiza os resultados em tempo real, acompanhando a bolinha:
-        # distância e tempo decorridos até aqui, e a maior altura já alcançada
-        texto_resultados.set_text(
-            f"Alcance R    = {x[i]:8.2f} m\n"
-            f"Altura máx.  = {altura_maxima_ate_agora[i]:8.2f} m\n"
-            f"Tempo de voo = {t[i]:8.2f} s"
+
+        atualizar_resultados(
+            x[i],
+            altura_maxima_ate_agora[i],
+            t[i]
         )
-        # no último quadro, garante que os valores batam exatamente com as
-        # fórmulas analíticas (evita pequenas diferenças de arredondamento)
+
         if i == len(x) - 1:
-            texto_resultados.set_text(
-                f"Alcance R    = {alcance_final:8.2f} m\n"
-                f"Altura máx.  = {y_max_final:8.2f} m\n"
-                f"Tempo de voo = {t_voo_final:8.2f} s"
+            atualizar_resultados(
+                alcance_final,
+                y_max_final,
+                t_voo_final
             )
+
         return ponto_animado, texto_resultados
 
-    # interrompe uma animação anterior ainda em execução, se houver.
-    # Após uma animação com repeat=False terminar, o matplotlib pode
-    # liberar o event_source internamente (ele vira None) — por isso
-    # verificamos os dois antes de chamar stop().
     animacao_anterior = _animacao_atual[0]
+
     if animacao_anterior is not None and animacao_anterior.event_source is not None:
         animacao_anterior.event_source.stop()
 
     _animacao_atual[0] = FuncAnimation(
-        fig, quadro_da_animacao, frames=len(x), interval=15, blit=True, repeat=False
+        fig,
+        quadro_da_animacao,
+        frames=len(x),
+        interval=15,
+        blit=True,
+        repeat=False
     )
+
     fig.canvas.draw_idle()
 
 
 def limpar_sobreposicoes(_evento):
-    """Callback do botão 'Limpar': remove todas as trajetórias sobrepostas."""
+    """Remove as trajetórias sobrepostas."""
     for curva in _curvas_anteriores:
         curva.remove()
+
     _curvas_anteriores.clear()
+    _indice_cor_trajetoria[0] = 0
     atualizar_grafico()
 
 
-# --- Liga cada widget à função chamada quando ele é alterado ---
 slider_v0.on_changed(atualizar_grafico)
 slider_theta.on_changed(atualizar_grafico)
 slider_y0.on_changed(atualizar_grafico)
 slider_g.on_changed(ao_mudar_gravidade)
+
+input_v0.on_submit(
+    lambda texto: aplicar_valor_digitado(
+        texto, slider_v0, input_v0, "Velocidade inicial", 1
+    )
+)
+
+input_theta.on_submit(
+    lambda texto: aplicar_valor_digitado(
+        texto, slider_theta, input_theta, "Ângulo", 1
+    )
+)
+
+input_y0.on_submit(
+    lambda texto: aplicar_valor_digitado(
+        texto, slider_y0, input_y0, "Altura inicial", 1
+    )
+)
+
+input_g.on_submit(
+    lambda texto: aplicar_valor_digitado(
+        texto, slider_g, input_g, "Gravidade", 2
+    )
+)
+
 radio_planetas.on_clicked(ao_mudar_planeta)
 botao_lancar.on_clicked(animar_lancamento)
 botao_limpar.on_clicked(limpar_sobreposicoes)
 
-atualizar_grafico()  # desenha o estado inicial da interface
+atualizar_grafico()
 plt.show()
